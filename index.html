@@ -41,13 +41,19 @@ body {
 }
 .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.brand { font-family: var(--display); color: var(--brass); font-size: 1.6rem; letter-spacing: .02em; margin: 0; }
+.brand { font-family: var(--display); color: var(--brass); font-size: 1.45rem; letter-spacing: .02em; margin: 0; }
 .voice {
   font: 600 .8rem var(--body); letter-spacing: .08em; text-transform: uppercase;
   background: transparent; color: var(--muted); border: 1px solid #ffffff30; border-radius: 999px;
   padding: 6px 12px; cursor: pointer;
 }
 .voice[aria-pressed="true"] { color: var(--brass); border-color: var(--brass-soft); }
+.voicebar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.voicesel {
+  font: 600 .8rem var(--body); color: var(--ivory); background: var(--felt-deep);
+  border: 1px solid #ffffff30; border-radius: 999px; padding: 6px 10px; max-width: 160px; min-width: 0;
+}
+.voicesel:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .steps { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0; }
 .steps li { flex: 1; height: 4px; border-radius: 2px; background: #ffffff1c; }
 .steps li.on { background: var(--brass); }
@@ -174,7 +180,10 @@ button:disabled { opacity: .45; cursor: default; }
 <div class="wrap">
   <header>
     <h1 class="brand">O Mágico Well</h1>
-    <button class="voice" id="voiceBtn" aria-pressed="true">Voz do mágico: ligada</button>
+    <div class="voicebar">
+      <button class="voice" id="voiceBtn" aria-pressed="true" aria-label="Voz do mágico">Voz: ligada</button>
+      <select class="voicesel" id="voiceSel" aria-label="Escolher a voz do mágico"><option value="">Voz automática</option></select>
+    </div>
   </header>
   <ol class="steps" id="steps" aria-label="Progresso do truque"><li></li><li></li><li></li><li></li><li></li><li></li></ol>
   <main class="stage" id="stage" aria-live="polite"></main>
@@ -237,37 +246,75 @@ const avatarSVG = `<svg class="avatar" viewBox="30 4 140 140" aria-hidden="true"
 function magician(line, aside = "") { return `<div class="magician">${avatarSVG}<div class="bubble">${line}${aside ? `<small>${aside}</small>` : ""}</div></div>`; }
 function setStep(n) { document.querySelectorAll("#steps li").forEach((li, i) => li.classList.toggle("on", i < n)); }
 
-/* voz de apresentador de circo: prefere uma voz masculina em português do Brasil,
-   mais grave e um pouco mais lenta. Se o aparelho só tiver voz feminina, ela fica bem mais grave. */
-const MALE = /felipe|ant[oô]nio|daniel|ricardo|f[aá]bio|humberto|j[uú]lio|donato|nicolau|valerio|male|masculin|homem/i;
-let pickedVoice = null, pickedIsMale = false;
+/* Voz de apresentador de circo.
+   1. Escolhe a melhor voz do aparelho: português do Brasil, masculina, e de preferência as versões
+      "premium", "aprimorada" ou "natural", que soam bem menos robóticas.
+   2. Fala frase por frase, com pausas e entonação próprias: exclamações mais fortes,
+      reticências com suspense, perguntas mais leves.
+   3. O jogador pode trocar a voz no seletor do topo; a escolha fica salva neste aparelho. */
+const MALE = /felipe|ant[oô]nio|daniel|ricardo|f[aá]bio|humberto|j[uú]lio|donato|nicolau|val[eé]rio|thiago|male|masculin|homem/i;
+const FEMALE = /luciana|francisca|maria|camila|vit[oó]ria|fernanda|joana|catarina|raquel|helo[ií]sa|leila|leticia|letícia|manuela|thalita|yara|brenda|elza|giovanna|female|feminin|mulher/i;
+const QUALITY = /premium|enhanced|aprimorad|natural|neural|online|siri/i;
+let allPt = [], pickedVoice = null, chosenURI = "";
+try { chosenURI = localStorage.getItem("mw-voice") || ""; } catch (e) {}
+const isMale = v => !!v && MALE.test(v.name) && !FEMALE.test(v.name);
+function scoreVoice(v) {
+  let sc = 0;
+  if (/^pt[-_]br/i.test(v.lang)) sc += 20;
+  if (isMale(v)) sc += 12;
+  if (FEMALE.test(v.name)) sc -= 6;
+  if (QUALITY.test(v.name)) sc += 6;
+  return sc;
+}
 function pickVoice() {
   try {
-    const all = speechSynthesis.getVoices();
-    const br = all.filter(v => /^pt[-_]br/i.test(v.lang)), pt = all.filter(v => /^pt/i.test(v.lang));
-    const male = br.find(v => MALE.test(v.name)) || pt.find(v => MALE.test(v.name));
-    pickedVoice = male || br[0] || pt[0] || null; pickedIsMale = !!male;
+    allPt = speechSynthesis.getVoices().filter(v => /^pt/i.test(v.lang)).sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    pickedVoice = allPt.find(v => v.voiceURI === chosenURI) || allPt[0] || null;
+    const sel = document.getElementById("voiceSel");
+    if (sel) {
+      sel.innerHTML = `<option value="">Voz automática</option>` + allPt.map(v =>
+        `<option value="${v.voiceURI.replace(/"/g, "&quot;")}">${v.name.replace(/</g, "")}${/^pt[-_]pt/i.test(v.lang) ? " (Portugal)" : ""}</option>`).join("");
+      sel.value = allPt.some(v => v.voiceURI === chosenURI) ? chosenURI : "";
+      sel.hidden = allPt.length < 2;
+    }
   } catch (e) {}
 }
 try { pickVoice(); speechSynthesis.addEventListener("voiceschanged", pickVoice); } catch (e) {}
+
 function speak(text) {
   if (!voice) return;
   try {
     speechSynthesis.cancel();
     if (!pickedVoice) pickVoice();
-    const u = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, "").replace(/…/g, "..."));
-    u.lang = "pt-BR";
-    if (pickedVoice) u.voice = pickedVoice;
-    u.pitch = pickedIsMale ? 0.75 : 0.45;
-    u.rate = 0.9;
-    u.onstart = () => { if (onIntro) introSpoken = true; };
-    speechSynthesis.speak(u);
+    const male = isMale(pickedVoice);
+    const basePitch = male ? 0.82 : 0.68, baseRate = 0.92;
+    const clean = text.replace(/<[^>]+>/g, "").replace(/\u2026/g, "...");
+    const parts = clean.match(/[^.!?]+(\.\.\.|[.!?]+)?/g) || [clean];
+    let first = true;
+    parts.map(t => t.trim()).filter(Boolean).forEach(t => {
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = pickedVoice ? pickedVoice.lang : "pt-BR";
+      if (pickedVoice) u.voice = pickedVoice;
+      u.volume = 1;
+      if (t.endsWith("!")) { u.pitch = basePitch + 0.12; u.rate = baseRate - 0.04; }       // anúncio de picadeiro
+      else if (t.endsWith("...")) { u.pitch = basePitch - 0.06; u.rate = baseRate - 0.14; } // suspense
+      else if (t.endsWith("?")) { u.pitch = basePitch + 0.08; u.rate = baseRate; }
+      else { u.pitch = basePitch; u.rate = baseRate; }
+      if (first) { u.onstart = () => { if (onIntro) introSpoken = true; }; first = false; }
+      speechSynthesis.speak(u);
+    });
   } catch (e) {}
 }
+document.getElementById("voiceSel").addEventListener("change", e => {
+  chosenURI = e.target.value;
+  try { localStorage.setItem("mw-voice", chosenURI); } catch (err) {}
+  pickVoice();
+  if (voice) speak("Respeitável público! Esta é a minha voz.");
+});
 document.getElementById("voiceBtn").addEventListener("click", e => {
   voice = !voice;
   e.currentTarget.setAttribute("aria-pressed", voice);
-  e.currentTarget.textContent = `Voz do mágico: ${voice ? "ligada" : "desligada"}`;
+  e.currentTarget.textContent = `Voz: ${voice ? "ligada" : "desligada"}`;
   if (!voice) try { speechSynthesis.cancel(); } catch (e) {}
 });
 
@@ -357,7 +404,7 @@ function intro() {
 }
 /* browsers only allow speech after the first tap: if the welcome line was blocked, say it on the first touch */
 document.addEventListener("pointerdown", e => {
-  if (onIntro && !introSpoken && !e.target.closest("#go, #voiceBtn")) speak(introLine());
+  if (onIntro && !introSpoken && !e.target.closest("#go, #voiceBtn, #voiceSel")) speak(introLine());
 }, { capture: true });
 
 /* 2. Primeiro embaralhamento */
