@@ -149,6 +149,26 @@ button:disabled { opacity: .45; cursor: default; }
 .fan.closing .slot { transition-duration: .7s; }
 .hint { font: 600 .9rem var(--body); color: var(--brass); margin: 0; }
 
+/* suspense: luz do palco apaga, só um holofote na carta */
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 15;
+  background: radial-gradient(circle at 50% 48%, transparent 0 150px, #000000d0 290px);
+  opacity: 0; transition: opacity .6s ease; }
+body.dim::after { opacity: 1; }
+.suspense { position: relative; display: grid; place-items: center; padding: 10px 0; }
+.spot { position: absolute; width: 230px; height: 230px; border-radius: 50%;
+  background: radial-gradient(circle, #f5efe133 0%, transparent 70%); animation: breathe 1s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.12); opacity: .7; } }
+.cycler { position: relative; animation: shake .12s linear infinite; }
+@keyframes shake { 25% { transform: translate(1px, -1px) rotate(.6deg); } 75% { transform: translate(-1px, 1px) rotate(-.6deg); } }
+.pulse { animation: pulseText 1s ease-in-out infinite; }
+@keyframes pulseText { 50% { opacity: .55; letter-spacing: .02em; } }
+.reveal { animation: reveal .9s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes reveal {
+  0% { transform: rotateY(90deg) scale(.8); box-shadow: 0 0 0 0 #d9b45a00; }
+  50% { transform: rotateY(0) scale(1.15); box-shadow: 0 0 60px 20px #d9b45acc; }
+  100% { transform: none; box-shadow: 0 0 26px 6px #d9b45a66; }
+}
+
 .big { --w: 130px !important; }
 .flip-in { animation: flipIn .6s ease both; }
 @keyframes flipIn { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
@@ -540,42 +560,82 @@ function shuffle2() {
   next.onclick = () => guess(0);
 }
 
-/* 6. As três tentativas */
-let decoys = [];
+/* 6. As duas tentativas: erra uma de propósito e acerta na segunda, sempre com suspense */
+let decoy = null;
 const GUESSES = [
-  { line: "É essa?… Ah, não. Eu sei que não é essa. Eu tô te testando.", aside: "Fique sério. Não entregue nada." },
-  { line: "Essa?… Também não é essa, né? Não fala nada! Só mais um teste.", aside: "Ele está quase lá…" },
+  { line: "É essa?… Ah, não. Eu sei que não é essa. Eu tô te testando. Não fala nada!", aside: "Fique sério. Não entregue nada." },
   { line: "Aí! É essa! Com certeza é essa. Acertei!", aside: "" }
 ];
+
+/* rufar de tambor: batidas de ruído cada vez mais fortes, terminando num prato */
+function drumroll(ms) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const now = actx.currentTime, step = 0.045, n = Math.floor(ms / 1000 / step);
+    const len = Math.floor(0.03 * actx.sampleRate), buf = actx.createBuffer(1, len, actx.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    for (let i = 0; i < n; i++) {
+      const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+      src.buffer = buf; f.type = "lowpass"; f.frequency.value = 900; g.gain.value = 0.08 + 0.35 * (i / n);
+      src.connect(f).connect(g).connect(actx.destination); src.start(now + i * step + Math.random() * 0.006);
+    }
+    const cl = Math.floor(0.9 * actx.sampleRate), cb = actx.createBuffer(1, cl, actx.sampleRate), cc = cb.getChannelData(0);
+    for (let i = 0; i < cl; i++) cc[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / cl, 4);
+    const cs = actx.createBufferSource(), cf = actx.createBiquadFilter(), cg = actx.createGain();
+    cs.buffer = cb; cf.type = "highpass"; cf.frequency.value = 5000; cg.gain.value = 0.45;
+    cs.connect(cf).connect(cg).connect(actx.destination); cs.start(now + ms / 1000);
+  } catch (e) {}
+}
+
 function guess(n) {
   setStep(5);
-  if (n === 0) decoys = deck.filter(c => c !== chosen).sort(() => Math.random() - .5).slice(0, 2);
-  const card = n < 2 ? decoys[n] : chosen;
-  const tried = decoys.slice(0, n);
+  const win = n === 1;
+  if (n === 0) decoy = deck.filter(c => c !== chosen)[Math.floor(Math.random() * 51)];
+  const card = win ? chosen : decoy;
+  const total = win ? 3400 : 2000;
+  const eyebrow = `O Mágico Well · Tentativa ${n + 1} de 2`;
+  document.body.classList.add("dim");
   stage.innerHTML = `
-    <p class="eyebrow">O Mágico Well · Tentativa ${n + 1} de 3</p>
-    <h2>Deixa eu ver…</h2>
-    <div class="thinking" aria-label="O mágico está pensando"><i></i><i></i><i></i></div>
-    ${deckHTML()}`;
-  speak("Deixa eu ver…");
+    <p class="eyebrow">${eyebrow}</p>
+    <h2 class="pulse">${win ? "Agora eu sei…" : "Deixa eu ver…"}</h2>
+    <div class="suspense">
+      <div class="spot" aria-hidden="true"></div>
+      <div class="cycler" id="cycler">${backHTML("big")}</div>
+    </div>
+    ${magician(win ? "Silêncio… concentração…" : "Deixa eu ver…")}`;
+  speak(win ? "Silêncio… concentração…" : "Deixa eu ver…");
+  drumroll(total);
+
+  // as cartas passam rápido e vão desacelerando, como uma roleta
+  const cyc = document.getElementById("cycler");
+  let t = 0, gap = 45;
+  const flick = () => {
+    const c = deck[Math.floor(Math.random() * deck.length)];
+    cyc.innerHTML = faceHTML(c, "big");
+    t += gap; gap *= 1.11;
+    if (t + gap < total) setTimeout(flick, gap);
+  };
+  setTimeout(flick, 300);
+
   setTimeout(() => {
-    const g = GUESSES[n], win = n === 2;
+    document.body.classList.remove("dim");
+    const g = GUESSES[n];
     stage.innerHTML = `
       <div class="stage ${win ? "win" : ""}">
-        <p class="eyebrow">O Mágico Well · Tentativa ${n + 1} de 3</p>
+        <p class="eyebrow">${eyebrow}</p>
         ${win
-          ? `<div class="winrow">${magoSVG()}${faceHTML(card, "big flip-in")}</div><h2>${cardName(card)}!</h2>`
+          ? `<div class="winrow">${magoSVG()}${faceHTML(card, "big reveal")}</div><h2>${cardName(card)}!</h2>`
           : `<h2>Será essa?</h2>${faceHTML(card, "big flip-in")}`}
         ${magician(g.line, g.aside)}
-        ${tried.length && !win ? `<div class="tries" aria-label="Tentativas anteriores">${tried.map(c => faceHTML(c, "miss")).join("")}</div>` : ""}
         <div class="btns">${win
           ? `<button class="primary" id="again">Jogar de novo</button>`
-          : `<button class="primary" id="next">${n === 0 ? "Deixa ele tentar de novo" : "Última chance"}</button>`}</div>
+          : `<button class="primary" id="next">Última chance</button>`}</div>
       </div>`;
     speak(g.line);
-    if (win) { confetti(); document.getElementById("again").onclick = intro; }
-    else document.getElementById("next").onclick = () => guess(n + 1);
-  }, 1900);
+    if (win) { setStep(6); confetti(); document.getElementById("again").onclick = intro; }
+    else document.getElementById("next").onclick = () => guess(1);
+  }, total + 150);
 }
 
 function confetti() {
