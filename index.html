@@ -319,10 +319,20 @@ function doShuffle(countEl, btns) {
   }, T + 30);
 }
 
+/* saudação pelo relógio do aparelho: 0h–5h madrugada, 6h–11h dia, 12h–17h tarde, 18h–23h noite */
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "Boa madrugada";
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+const introLine = () => `${greeting()}! Eu sou o Mágico Well. Hoje eu vou descobrir a sua carta.`;
+
 /* 1. Abertura */
 function intro() {
   setStep(0); newDeck(); chosen = null; shuffles = 0;
-  const line = "Boa noite! Eu sou o Mágico Well. Hoje eu vou descobrir a sua carta.";
+  const line = introLine();
   stage.innerHTML = `
     <p class="eyebrow">Apresentação</p>
     <h2>Pense numa carta. Eu descubro.</h2>
@@ -335,7 +345,7 @@ function intro() {
 }
 /* browsers only allow speech after the first tap: if the welcome line was blocked, say it on the first touch */
 document.addEventListener("pointerdown", e => {
-  if (onIntro && !introSpoken && !e.target.closest("#go, #voiceBtn")) speak("Boa noite! Eu sou o Mágico Well. Hoje eu vou descobrir a sua carta.");
+  if (onIntro && !introSpoken && !e.target.closest("#go, #voiceBtn")) speak(introLine());
 }, { capture: true });
 
 /* 2. Primeiro embaralhamento */
