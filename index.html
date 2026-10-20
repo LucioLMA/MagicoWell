@@ -165,7 +165,7 @@ button:disabled { opacity: .45; cursor: default; }
 .note { font-size: .8rem; color: #8fa49a; text-align: center; margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+  *:not(.deck .card), *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
 </style>
 
@@ -237,14 +237,29 @@ const avatarSVG = `<svg class="avatar" viewBox="30 4 140 140" aria-hidden="true"
 function magician(line, aside = "") { return `<div class="magician">${avatarSVG}<div class="bubble">${line}${aside ? `<small>${aside}</small>` : ""}</div></div>`; }
 function setStep(n) { document.querySelectorAll("#steps li").forEach((li, i) => li.classList.toggle("on", i < n)); }
 
+/* voz de apresentador de circo: prefere uma voz masculina em português do Brasil,
+   mais grave e um pouco mais lenta. Se o aparelho só tiver voz feminina, ela fica bem mais grave. */
+const MALE = /felipe|ant[oô]nio|daniel|ricardo|f[aá]bio|humberto|j[uú]lio|donato|nicolau|valerio|male|masculin|homem/i;
+let pickedVoice = null, pickedIsMale = false;
+function pickVoice() {
+  try {
+    const all = speechSynthesis.getVoices();
+    const br = all.filter(v => /^pt[-_]br/i.test(v.lang)), pt = all.filter(v => /^pt/i.test(v.lang));
+    const male = br.find(v => MALE.test(v.name)) || pt.find(v => MALE.test(v.name));
+    pickedVoice = male || br[0] || pt[0] || null; pickedIsMale = !!male;
+  } catch (e) {}
+}
+try { pickVoice(); speechSynthesis.addEventListener("voiceschanged", pickVoice); } catch (e) {}
 function speak(text) {
   if (!voice) return;
   try {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, ""));
-    u.lang = "pt-BR"; u.rate = 1.02;
-    const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith("pt"));
-    if (v) u.voice = v;
+    if (!pickedVoice) pickVoice();
+    const u = new SpeechSynthesisUtterance(text.replace(/<[^>]+>/g, "").replace(/…/g, "..."));
+    u.lang = "pt-BR";
+    if (pickedVoice) u.voice = pickedVoice;
+    u.pitch = pickedIsMale ? 0.75 : 0.45;
+    u.rate = 0.9;
     u.onstart = () => { if (onIntro) introSpoken = true; };
     speechSynthesis.speak(u);
   } catch (e) {}
@@ -269,14 +284,15 @@ function tick() {
   } catch (e) {}
 }
 
-/* riffle shuffle: cut in two halves, bend, cards fall interleaved, then square the deck */
+/* riffle shuffle: cut in two halves, bend, cards fall interleaved, then square the deck.
+   Built on plain CSS transitions in timed steps, which iPhone Safari runs reliably. */
 function doShuffle(countEl, btns) {
   const d = document.getElementById("deck");
   if (!d || d.dataset.busy) return;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {}
   shuffleArr(deck); shuffles++;
   countEl.textContent = `Embaralhado ${shuffles} ${shuffles === 1 ? "vez" : "vezes"}`;
   const cards = [...d.querySelectorAll(".card")], n = cards.length;
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !cards[0].animate) { btns.forEach(b => b.disabled = false); return; }
   d.dataset.busy = "1"; btns.forEach(b => b.disabled = true);
 
   const half = Math.floor(n / 2) + Math.floor(Math.random() * 3) - 1;
@@ -288,35 +304,31 @@ function doShuffle(countEl, btns) {
     for (let c = 0; c < clump && src.length; c++) order.push(src.shift());
   }
 
-  const CUT = 320, HOLD = 120, GAP = 55, DROP = 160, SETTLE = 260;
+  const S = matchMedia("(prefers-reduced-motion: reduce)").matches ? .7 : 1;
+  const CUT = 320 * S, HOLD = 140 * S, GAP = 60 * S, DROP = 170 * S, SETTLE = 280 * S, OUT = 82;
   const start = CUT + HOLD, T = start + (n - 1) * GAP + DROP + SETTLE;
-  const OUT = 82;
+  const set = (c, tr, ms, ease) => { c.style.transition = `transform ${ms}ms ${ease}`; c.style.transform = tr; };
+  const at = (ms, fn) => setTimeout(fn, ms);
+
   order.forEach((idx, k) => {
     const c = cards[idx], left = idx < half, j = left ? idx : idx - half, sx = left ? -1 : 1;
-    const cut  = `translate(${sx * OUT}px, ${-j * 0.7 - 6}px) rotate(${sx * -7}deg)`;
-    const bend = `translate(${sx * (OUT - 6)}px, ${-j * 0.7 - 2}px) rotate(${sx * -11}deg) scaleY(.98)`;
-    const mid  = `translate(${sx * 34}px, ${-k * 0.7 - 22}px) rotate(${sx * -3}deg)`;
-    const land = `translate(${sx * 3}px, ${-k * 0.7 + 2}px)`;
-    const fin  = basePos(k);
+    // 1. corte: as duas metades se abrem para os lados
+    set(c, `translate(${sx * OUT}px, ${-j * 0.7 - 6}px) rotate(${sx * -7}deg)`, CUT, "cubic-bezier(.3,.7,.3,1)");
+    // 2. dobra com o polegar
+    at(CUT, () => set(c, `translate(${sx * (OUT - 6)}px, ${-j * 0.7 - 2}px) rotate(${sx * -11}deg) scaleY(.98)`, HOLD, "ease-out"));
+    // 3. a carta solta e cai no meio, por cima das que já caíram
     const t0 = start + k * GAP;
-    c.animate([
-      { transform: basePos(idx), offset: 0, easing: "cubic-bezier(.3,.7,.3,1)" },
-      { transform: cut, offset: CUT / T },
-      { transform: bend, offset: start / T },
-      { transform: bend, offset: t0 / T, easing: "ease-in" },
-      { transform: mid, offset: (t0 + DROP * .45) / T, easing: "ease-out" },
-      { transform: land, offset: (t0 + DROP) / T },
-      { transform: land, offset: (T - SETTLE) / T, easing: "cubic-bezier(.2,.9,.3,1.3)" },
-      { transform: fin, offset: 1 }
-    ], { duration: T, fill: "forwards" });
-    setTimeout(() => { c.style.zIndex = 100 + k; tick(); }, t0 + DROP * .45);
+    at(t0, () => { c.style.zIndex = 100 + k; set(c, `translate(${sx * 30}px, ${-k * 0.7 - 20}px) rotate(${sx * -3}deg)`, DROP * .45, "ease-in"); tick(); });
+    at(t0 + DROP * .45, () => set(c, `translate(${sx * 3}px, ${-k * 0.7 + 2}px) rotate(0deg)`, DROP * .55, "ease-out"));
+    // 4. acerta o montão
+    at(T - SETTLE, () => set(c, basePos(k), SETTLE, "cubic-bezier(.2,.9,.3,1.3)"));
   });
-  d.animate([{ transform: "none" }, { transform: "scale(1.05, .96)" }, { transform: "none" }],
-    { duration: SETTLE, delay: T - SETTLE, easing: "ease-out" });
-  setTimeout(() => {
-    order.forEach((idx, k) => { const c = cards[idx]; c.style.transform = basePos(k); c.getAnimations().forEach(a => a.cancel()); });
+  at(T - SETTLE, () => { d.style.transition = `transform ${SETTLE / 2}ms ease-out`; d.style.transform = "scale(1.05, .96)"; });
+  at(T - SETTLE / 2, () => { d.style.transform = "none"; });
+  at(T + 40, () => {
+    cards.forEach(c => c.style.transition = "");
     delete d.dataset.busy; btns.forEach(b => b.disabled = false);
-  }, T + 30);
+  });
 }
 
 /* saudação pelo relógio do aparelho: 0h–5h madrugada, 6h–11h dia, 12h–17h tarde, 18h–23h noite */
@@ -327,7 +339,7 @@ function greeting() {
   if (h < 18) return "Boa tarde";
   return "Boa noite";
 }
-const introLine = () => `${greeting()}! Eu sou o Mágico Well. Hoje eu vou descobrir a sua carta.`;
+const introLine = () => `Respeitável público! ${greeting()}! Eu sou o grande Mágico Well. Hoje eu vou descobrir a sua carta!`;
 
 /* 1. Abertura */
 function intro() {
