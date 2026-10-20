@@ -59,7 +59,13 @@ h2 { font-family: var(--display); font-weight: 400; font-size: clamp(1.7rem, 6vw
 
 /* magician speech */
 .magician { display: flex; gap: 14px; align-items: flex-start; text-align: left; max-width: 36rem; width: 100%; }
-.hat { flex: none; width: 52px; height: 52px; }
+.avatar { flex: none; width: 58px; height: 58px; border-radius: 50%; background: var(--velvet); border: 2px solid var(--brass); box-sizing: border-box; overflow: hidden; }
+.portrait { width: min(230px, 62vw); height: auto; filter: drop-shadow(0 12px 18px #00000070); }
+.portrait .wand { transform-origin: 160px 232px; animation: wave 2.4s ease-in-out infinite; }
+@keyframes wave { 50% { transform: rotate(-12deg); } }
+.portrait .spark { animation: twinkle 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes twinkle { 50% { transform: scale(.6) rotate(30deg); opacity: .6; } }
+.win .portrait { width: min(170px, 46vw); }
 .bubble {
   background: var(--ivory); color: var(--ink); border-radius: 4px 18px 18px 18px;
   padding: 14px 18px; font-size: 1.1rem; font-weight: 600; min-width: 0;
@@ -193,8 +199,42 @@ const backHTML = (cls = "") => `<div class="card back ${cls}" aria-hidden="true"
 const DECK_N = 14;
 const basePos = i => `translate(${-i * 0.7}px, ${-i * 0.7}px)`;
 const deckHTML = (extra = "") => `<div class="deck" id="deck"><div class="deck-shadow" aria-hidden="true"></div>${Array.from({length: DECK_N}, (_, i) => `<div class="card back" style="transform:${basePos(i)};z-index:${i}" aria-hidden="true"></div>`).join("")}${extra}</div>`;
-const hatSVG = `<svg class="hat" viewBox="0 0 52 52" aria-hidden="true"><ellipse cx="26" cy="42" rx="24" ry="6" fill="#1b1a17" stroke="#d9b45a" stroke-width="1.5"/><path d="M12 41 L14 10 Q26 6 38 10 L40 41 Z" fill="#1b1a17" stroke="#d9b45a" stroke-width="1.5"/><rect x="13.2" y="31" width="25.6" height="5" fill="#b3202f"/><path d="M40 12 l3-5 l1 6 l5 1 l-5 2 l-1 5 l-2-5 l-5-1z" fill="#d9b45a"/></svg>`;
-function magician(line, aside = "") { return `<div class="magician">${hatSVG}<div class="bubble">${line}${aside ? `<small>${aside}</small>` : ""}</div></div>`; }
+/* caricatura do Mágico Well: cabeça grande, cartola torta, bigode enrolado, piscadinha e varinha */
+const MAGO_BODY = `
+  <path d="M28 240 Q36 182 100 176 Q164 182 172 240 Z" fill="#1b1a17"/>
+  <path d="M52 186 L100 204 L72 240 Z M148 186 L100 204 L128 240 Z" fill="#b3202f"/>
+  <path d="M84 180 L116 180 L100 216 Z" fill="#f5efe1"/>
+  <rect x="90" y="166" width="20" height="18" fill="#e9b98f"/>
+  <path d="M100 190 L84 181 L84 199 Z M100 190 L116 181 L116 199 Z" fill="#b3202f" stroke="#1b1a17" stroke-width="1.5"/>
+  <circle cx="100" cy="190" r="3.5" fill="#d9b45a"/>
+  <g class="wand"><line x1="160" y1="232" x2="186" y2="168" stroke="#1b1a17" stroke-width="7" stroke-linecap="round"/>
+  <line x1="181" y1="180" x2="186" y2="168" stroke="#f5efe1" stroke-width="7" stroke-linecap="round"/>
+  <path class="spark" d="M190 146 l4 9 10 1 -8 6 3 10 -9-6 -9 6 3-10 -8-6 10-1z" fill="#d9b45a"/></g>
+  <circle cx="160" cy="230" r="10" fill="#f5efe1" stroke="#1b1a17" stroke-width="2"/>`;
+const MAGO_HEAD = `
+  <ellipse cx="47" cy="124" rx="9" ry="14" fill="#e9b98f" stroke="#1b1a17" stroke-width="2"/>
+  <ellipse cx="153" cy="124" rx="9" ry="14" fill="#e9b98f" stroke="#1b1a17" stroke-width="2"/>
+  <ellipse cx="100" cy="120" rx="52" ry="58" fill="#f2c9a0" stroke="#1b1a17" stroke-width="2.5"/>
+  <path d="M50 96 Q46 80 60 74 Q56 88 62 96 Z M150 96 Q154 80 140 74 Q144 88 138 96 Z" fill="#2a1a12"/>
+  <circle cx="70" cy="140" r="9" fill="#e88f7a" opacity=".45"/><circle cx="130" cy="140" r="9" fill="#e88f7a" opacity=".45"/>
+  <path d="M66 92 Q78 78 92 92" fill="none" stroke="#2a1a12" stroke-width="5" stroke-linecap="round"/>
+  <path d="M110 100 Q122 94 136 100" fill="none" stroke="#2a1a12" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="79" cy="108" rx="11" ry="13" fill="#fff" stroke="#1b1a17" stroke-width="2"/>
+  <circle cx="82" cy="110" r="5.5" fill="#1b1a17"/><circle cx="84" cy="108" r="1.8" fill="#fff"/>
+  <path d="M112 110 Q123 117 134 110" fill="none" stroke="#1b1a17" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="100" cy="132" rx="15" ry="13" fill="#e7a07e" stroke="#1b1a17" stroke-width="2"/>
+  <path d="M100 146 C90 138 76 140 66 150 C60 156 56 150 60 146 C56 154 64 160 72 154 C82 150 92 152 100 152 C108 152 118 150 128 154 C136 160 144 154 140 146 C144 150 140 156 134 150 C124 140 110 138 100 146 Z" fill="#2a1a12"/>
+  <path d="M84 158 Q100 174 116 158" fill="#7a1d24" stroke="#1b1a17" stroke-width="2"/>
+  <path d="M94 172 L100 182 L106 172 Z" fill="#2a1a12"/>
+  <g transform="rotate(-9 100 70)">
+    <ellipse cx="100" cy="70" rx="64" ry="11" fill="#1b1a17" stroke="#d9b45a" stroke-width="1.5"/>
+    <path d="M64 68 L68 6 Q100 -2 132 6 L136 68 Z" fill="#1b1a17" stroke="#d9b45a" stroke-width="1.5"/>
+    <rect x="65.5" y="50" width="69" height="11" fill="#b3202f"/>
+    <path d="M76 14 Q78 34 76 46" stroke="#ffffff30" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>`;
+const magoSVG = () => `<svg class="portrait" viewBox="0 -6 210 248" role="img" aria-label="Caricatura do Mágico Well">${MAGO_BODY}${MAGO_HEAD}</svg>`;
+const avatarSVG = `<svg class="avatar" viewBox="30 4 140 140" aria-hidden="true">${MAGO_HEAD}</svg>`;
+function magician(line, aside = "") { return `<div class="magician">${avatarSVG}<div class="bubble">${line}${aside ? `<small>${aside}</small>` : ""}</div></div>`; }
 function setStep(n) { document.querySelectorAll("#steps li").forEach((li, i) => li.classList.toggle("on", i < n)); }
 
 function speak(text) {
@@ -286,7 +326,7 @@ function intro() {
   stage.innerHTML = `
     <p class="eyebrow">Apresentação</p>
     <h2>Pense numa carta. Eu descubro.</h2>
-    ${deckHTML()}
+    ${magoSVG()}
     ${magician(line, "Pegue o baralho e siga as minhas instruções.")}
     <div class="btns"><button class="primary" id="go">Começar o truque</button></div>`;
   onIntro = true; introSpoken = false;
@@ -452,6 +492,7 @@ function guess(n) {
     stage.innerHTML = `
       <div class="stage ${win ? "win" : ""}">
         <p class="eyebrow">O Mágico Well · Tentativa ${n + 1} de 3</p>
+        ${win ? magoSVG() : ""}
         <h2>${win ? "A sua carta é…" : "Será essa?"}</h2>
         ${faceHTML(card, "big flip-in")}
         ${win ? `<h2>${cardName(card)}!</h2>` : ""}
