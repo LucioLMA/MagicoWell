@@ -168,7 +168,7 @@ button:disabled { opacity: .45; cursor: default; }
 <div class="wrap">
   <header>
     <h1 class="brand">O Mágico Well</h1>
-    <button class="voice" id="voiceBtn" aria-pressed="false">Voz do mágico: desligada</button>
+    <button class="voice" id="voiceBtn" aria-pressed="true">Voz do mágico: ligada</button>
   </header>
   <ol class="steps" id="steps" aria-label="Progresso do truque"><li></li><li></li><li></li><li></li><li></li><li></li></ol>
   <main class="stage" id="stage" aria-live="polite"></main>
@@ -178,7 +178,7 @@ button:disabled { opacity: .45; cursor: default; }
 <script>
 const SUITS = [{s:"♠",red:false,n:"espadas"},{s:"♥",red:true,n:"copas"},{s:"♦",red:true,n:"ouros"},{s:"♣",red:false,n:"paus"}];
 const RANKS = [["A","Ás"],["2","2"],["3","3"],["4","4"],["5","5"],["6","6"],["7","7"],["8","8"],["9","9"],["10","10"],["J","Valete"],["Q","Dama"],["K","Rei"]];
-let deck = [], chosen = null, shuffles = 0, voice = false;
+let deck = [], chosen = null, shuffles = 0, voice = true, onIntro = false, introSpoken = false;
 const stage = document.getElementById("stage");
 
 function newDeck() { deck = []; for (const su of SUITS) for (const r of RANKS) deck.push({r:r[0], rn:r[1], ...su}); }
@@ -205,6 +205,7 @@ function speak(text) {
     u.lang = "pt-BR"; u.rate = 1.02;
     const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith("pt"));
     if (v) u.voice = v;
+    u.onstart = () => { if (onIntro) introSpoken = true; };
     speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -288,9 +289,14 @@ function intro() {
     ${deckHTML()}
     ${magician(line, "Pegue o baralho e siga as minhas instruções.")}
     <div class="btns"><button class="primary" id="go">Começar o truque</button></div>`;
+  onIntro = true; introSpoken = false;
   speak(line);
-  document.getElementById("go").onclick = shuffle1;
+  document.getElementById("go").onclick = () => { onIntro = false; shuffle1(); };
 }
+/* browsers only allow speech after the first tap: if the welcome line was blocked, say it on the first touch */
+document.addEventListener("pointerdown", e => {
+  if (onIntro && !introSpoken && !e.target.closest("#go, #voiceBtn")) speak("Boa noite! Eu sou o Mágico Well. Hoje eu vou descobrir a sua carta.");
+}, { capture: true });
 
 /* 2. Primeiro embaralhamento */
 function shuffle1() {
